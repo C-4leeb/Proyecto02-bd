@@ -20,21 +20,6 @@ CREATE TABLE habitacion (
   caracteristicas TEXT NOT NULL
 );
 
---Tabla documentos 
-CREATE TABLE documentos (
-  copia_pasaporte VARCHAR(50) PRIMARY KEY,
-  contratos TEXT not null,
-  facturacion_electronica TEXT not null
-);
-
--- Tabla de políticas de reserva
-CREATE TABLE politicas_reserva (
-  id_politicas SERIAL PRIMARY KEY,
-  minimo_noches INT NOT NULL,
-  penalizaciones_cancelación VARCHAR(100), 
-  upgrades_automaticos BOOLEAN
-);
-
 -- Tabla eventos
 CREATE TABLE eventos (
   ID_evento SERIAL PRIMARY KEY,
@@ -43,7 +28,22 @@ CREATE TABLE eventos (
   grupos BOOLEAN NOT NULL
 );
 
--- Tabla cliente
+--Relación N:N de evento habitacion (En el diagrama lo trabajamos diferente pero revisando nos parece más optimo así)
+CREATE TABLE evento_habitacion (
+  id_evento INT REFERENCES eventos(id_evento),
+  id_habitacion INT REFERENCES habitacion(id_habitacion),
+  PRIMARY KEY (id_evento, id_habitacion)
+);
+
+--Tabla documentos 
+CREATE TABLE documentos (
+  copia_pasaporte VARCHAR(100) PRIMARY KEY,
+  contratos TEXT not null,
+  facturacion_electronica TEXT not null
+);
+
+
+--Creando tabla cliente 
 CREATE TABLE cliente (
   documento_identidad VARCHAR(50) PRIMARY KEY,
   nombre VARCHAR(100),
@@ -55,7 +55,23 @@ CREATE TABLE cliente (
   FOREIGN KEY (copia_pasaporte) REFERENCES documentos(copia_pasaporte)
 );
 
+CREATE TABLE programa_fidelizacion (
+  documento_identidad VARCHAR(50) PRIMARY KEY,
+  nivel_puntos INT NOT NULL,
+  nivel_cliente VARCHAR(50) NOT NULL,
+  beneficios TEXT NOT NULL,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
+);
 
+
+-- Tabla de políticas de reserva
+CREATE TABLE politicas_reserva (
+  id_politicas SERIAL PRIMARY KEY,
+  minimo_noches INT NOT NULL,
+  penalizaciones_cancelación VARCHAR(100), 
+  upgrades_automaticos BOOLEAN
+);
+ 
 -- Tabla reserva
 CREATE TABLE reserva (
   ID_reserva SERIAL PRIMARY KEY,
@@ -81,9 +97,6 @@ CREATE TABLE pago (
   ID_reserva INT,
   FOREIGN KEY (ID_reserva) REFERENCES reserva(ID_reserva)
 );
-
-
-
 --Agregando la relación (1:N) en pago
 ALTER TABLE cliente
 ADD CONSTRAINT fk_pago
@@ -97,17 +110,15 @@ CREATE TABLE servicios (
   disponibilidad BOOLEAN not null,
   horario TIME not null,
   precio DECIMAL(10,2) not null,
-  promociones TEXT not null,
-  servicios_extra TEXT not null,
-  ofertas_personalizadas TEXT not null
+  promociones TEXT,
+  servicios_extra TEXT,
+  ofertas_personalizadas TEXT
 );
 
-CREATE TABLE programa_fidelizacion (
-  documento_identidad VARCHAR(50) PRIMARY KEY,
-  nivel_puntos INT NOT NULL,
-  nivel_cliente VARCHAR(50) NOT NULL,
-  beneficios TEXT NOT NULL,
-  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
+--Relación N:N de clientes con servicios (En el diagrama lo trabajamos diferente pero revisando nos parece más optimo así)
+CREATE TABLE cliente_servicio (
+  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
+  id_servicio INT REFERENCES servicios(id_servicio)
 );
 
 
@@ -120,5 +131,3 @@ CREATE TABLE preferencias (
   solicitudes_especiales TEXT,
   FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
 );
-
-
