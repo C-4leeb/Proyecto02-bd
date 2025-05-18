@@ -8,8 +8,6 @@ CREATE TABLE costos (
   promociones_especiales VARCHAR(100)
 );
 
---sexo
-
 -- Tabla de habitación
 CREATE TABLE habitacion (
   id_habitacion INT PRIMARY KEY, 
@@ -22,36 +20,19 @@ CREATE TABLE habitacion (
   caracteristicas TEXT NOT NULL
 );
 
+--Tabla documentos 
+CREATE TABLE documentos (
+  copia_pasaporte VARCHAR(50) PRIMARY KEY,
+  contratos TEXT not null,
+  facturacion_electronica TEXT not null
+);
+
 -- Tabla de políticas de reserva
 CREATE TABLE politicas_reserva (
   id_politicas SERIAL PRIMARY KEY,
   minimo_noches INT NOT NULL,
   penalizaciones_cancelación VARCHAR(100), 
   upgrades_automaticos BOOLEAN
-);
-
--- Tabla reserva
-CREATE TABLE reserva (
-  ID_reserva SERIAL PRIMARY KEY,
-  numero_huespedes INT NOT NULL,
-  id_politicas INT,
-  FOREIGN KEY (id_politicas) REFERENCES politicas_reserva(id_politicas),
-  id_habitacion INT,
-  FOREIGN KEY (id_habitacion) REFERENCES habitacion(id_habitacion)
-);
-
--- Tabla pago
-CREATE TABLE pago (
-  ID_pago SERIAL PRIMARY KEY,
-  tipo_pago VARCHAR(100) NOT NULL,
-  plataformas_integradas VARCHAR(100) NOT NULL,
-  metodo_pago VARCHAR(100) NOT NULL,
-  factura VARCHAR(100) NOT NULL,
-  recibo VARCHAR(100),
-  reembolso INT,
-  cargos_extra VARCHAR(100),
-  ID_reserva INT,
-  FOREIGN KEY (ID_reserva) REFERENCES reserva(ID_reserva)
 );
 
 -- Tabla eventos
@@ -68,54 +49,76 @@ CREATE TABLE cliente (
   nombre VARCHAR(100),
   nacionalidad VARCHAR(50),
   telefono VARCHAR(20),
-  correo VARCHAR(100)
+  correo VARCHAR(100),
+  ID_pago INT,
+  copia_pasaporte VARCHAR(100),
+  FOREIGN KEY (copia_pasaporte) REFERENCES documentos(copia_pasaporte)
 );
 
---Relacion cliente con reserva
-CREATE TABLE cliente_reserva (
-  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
-  id_reserva INT REFERENCES reserva (ID_reserva)
+
+-- Tabla reserva
+CREATE TABLE reserva (
+  ID_reserva SERIAL PRIMARY KEY,
+  numero_huespedes INT NOT NULL,
+  id_politicas INT,
+  FOREIGN KEY (id_politicas) REFERENCES politicas_reserva(id_politicas),
+  id_habitacion INT,
+  FOREIGN KEY (id_habitacion) REFERENCES habitacion(id_habitacion),
+  documento_identidad VARCHAR(50),
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
 );
 
---Relacion cliente con pago
-CREATE TABLE cliente_pago (
-  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
-  id_pago INT REFERENCES pago(ID_pago)
-  );
+-- Tabla pago
+CREATE TABLE pago (
+  ID_pago SERIAL PRIMARY KEY,
+  tipo_pago VARCHAR(100) NOT NULL,
+  plataformas_integradas VARCHAR(100) NOT NULL,
+  metodo_pago VARCHAR(100) NOT NULL,
+  factura VARCHAR(100) NOT NULL,
+  recibo VARCHAR(100),
+  reembolso INT,
+  cargos_extra VARCHAR(100),
+  ID_reserva INT,
+  FOREIGN KEY (ID_reserva) REFERENCES reserva(ID_reserva)
+);
+
+
+
+--Agregando la relación (1:N) en pago
+ALTER TABLE cliente
+ADD CONSTRAINT fk_pago
+FOREIGN KEY (ID_pago) REFERENCES pago(ID_pago);
+
 
 -- Tabla servicios
 CREATE TABLE servicios (
   id_servicio SERIAL PRIMARY KEY,
-  nombre VARCHAR(100),
-  disponibilidad BOOLEAN,
-  horario TEXT,
-  precio DECIMAL(10,2),
-  promociones TEXT,
-  servicios_extra TEXT,
-  ofertas_personalizadas TEXT
+  nombre VARCHAR(100) not null,
+  disponibilidad BOOLEAN not null,
+  horario TIME not null,
+  precio DECIMAL(10,2) not null,
+  promociones TEXT not null,
+  servicios_extra TEXT not null,
+  ofertas_personalizadas TEXT not null
 );
 
---Relacion cliente con servicios 
-CREATE TABLE cliente_servicio (
-  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
-  id_servicio INT REFERENCES servicios(id_servicio)
-);
-
-drop table cliente_servicio
-
--- Tabla programa fidelizacion
 CREATE TABLE programa_fidelizacion (
-  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
-  nivel_puntos INT,
-  nivel_cliente VARCHAR(50),
-  beneficios TEXT
+  documento_identidad VARCHAR(50) PRIMARY KEY,
+  nivel_puntos INT NOT NULL,
+  nivel_cliente VARCHAR(50) NOT NULL,
+  beneficios TEXT NOT NULL,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
 );
 
+
+--Relación 1:1 de clientes con preferencias (En el diagrama lo trabajamos diferente pero revisando nos parece más optimo así)
 -- Tabla preferencias
 CREATE TABLE preferencias (
-  documento_identidad VARCHAR(50) PRIMARY KEY REFERENCES cliente(documento_identidad),
+  documento_identidad VARCHAR(50) PRIMARY KEY,
   tipo_habitacion_favorita VARCHAR(50),
   alergias_alimenticias TEXT,
-  solicitudes_especiales TEXT
+  solicitudes_especiales TEXT,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
 );
+
 
