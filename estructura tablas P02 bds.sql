@@ -8,6 +8,8 @@ CREATE TABLE costos (
   promociones_especiales VARCHAR(100)
 );
 
+--sexo
+
 -- Tabla de habitación
 CREATE TABLE habitacion (
   id_habitacion INT PRIMARY KEY, 
