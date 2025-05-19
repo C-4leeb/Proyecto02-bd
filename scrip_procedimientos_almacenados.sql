@@ -1,6 +1,6 @@
 set search_path to sch_reservas_hotel
 
-
+--Procedimiento para verificar disponibilidad de habitaciones automáticamente.
 CREATE OR REPLACE PROCEDURE disponibilidad_habitaciones()
 LANGUAGE plpgsql
 AS $$
@@ -36,7 +36,7 @@ BEGIN
 END;
 $$;
 
-
+--Procedimiento para crear nueva reservación
 CREATE OR REPLACE PROCEDURE crear_reservacion(
     p_numero_huespedes INT,
     p_tipo_habitacion VARCHAR,
@@ -98,40 +98,41 @@ BEGIN
 END;
 $$;
 
-
+--Procedimiento para cancerlar una reservacion
 CREATE OR REPLACE PROCEDURE cancelar_reservacion(p_id_reserva INT)
 LANGUAGE plpgsql
 AS $$
 DECLARE
     v_id_habitacion INT;
 BEGIN
-    -- Obtener la habitacion asociada a la reserva
+    -- Verificar si la reserva existe y obtener la habitacion
     SELECT id_habitacion INTO v_id_habitacion
     FROM reserva
     WHERE ID_reserva = p_id_reserva;
 
-    -- Verificar si la reserva existe
     IF v_id_habitacion IS NULL THEN
-        RAISE EXCEPTION 'No se encontró una reserva con el ID %', p_id_reserva;
+        RAISE EXCEPTION 'No se encontro una reserva con el ID %', p_id_reserva;
     END IF;
 
-    -- Eliminar pagos asociados si los hay 
+    -- Eliminar pagos asociados 
     DELETE FROM pago WHERE ID_reserva = p_id_reserva;
 
-    -- Liberar la habitación
+    -- Marcar la reserva como cancelada
+    UPDATE reserva
+    SET estado_reserva = 'Cancelada'
+    WHERE ID_reserva = p_id_reserva;
+
+    -- Liberar la habitacion 
     UPDATE habitacion
     SET disponibilidad = 'libre'
     WHERE id_habitacion = v_id_habitacion;
 
-    -- Eliminar la reserva
-    DELETE FROM reserva
-    WHERE ID_reserva = p_id_reserva;
-
-    RAISE NOTICE 'Reserva % cancelada, p_id_reserva';
+ 
+    RAISE NOTICE 'Reserva % cancelada.', p_id_reserva;
 END;
 $$;
 
--- Cambia el estado de la reservación una vez registrado el pago realizado
+--Procedimieto que cambia el estado de la reservación una vez registrado el pago realizado
 CREATE OR REPLACE PROCEDURE ActualizarEstadoPago(p_id_reserva INT)
 LANGUAGE plpgsql
 AS $$
