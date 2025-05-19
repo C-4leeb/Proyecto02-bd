@@ -27,7 +27,7 @@ CREATE TABLE habitacion (
   id_evento INT,  
   FOREIGN KEY (id_evento) REFERENCES eventos(ID_evento),
   tipo VARCHAR(100) NOT NULL CHECK (tipo IN ('sencilla', 'doble', 'suite')),
-  disponibilidad BOOLEAN NOT NULL CHECK (disponibilidad IN ('libre', 'ocupada', 'en limpieza', 'en mantenimiento')), 
+  disponibilidad VARCHAR(50) NOT NULL CHECK (disponibilidad IN ('libre', 'ocupada', 'en limpieza', 'en mantenimiento')), 
   descripcion TEXT NOT NULL, 
   caracteristicas TEXT NOT NULL
 );
@@ -73,6 +73,11 @@ CREATE TABLE politicas_reserva (
 CREATE TABLE reserva (
   ID_reserva SERIAL PRIMARY KEY,
   numero_huespedes INT NOT NULL,
+  solicitudes_especial TEXT,
+  tipo_reserva VARCHAR(50) NOT NULL CHECK (tipo_reserva IN ('individual', 'grupo', 'corporativa')),
+  tipo_confirmacion VARCHAR(50) NOT NULL CHECK (tipo_confirmacion IN ('correo', 'app', 'teléfono')),
+  fecha_entrada DATE NOT NULL,
+  fecha_salida DATE NOT NULL,
   id_politicas INT,
   FOREIGN KEY (id_politicas) REFERENCES politicas_reserva(id_politicas),
   id_habitacion INT,
@@ -84,7 +89,7 @@ CREATE TABLE reserva (
 -- Tabla pago
 CREATE TABLE pago (
   ID_pago SERIAL PRIMARY KEY,
-  tipo_pago VARCHAR(100) NOT NULL,
+  tipo_pago VARCHAR(100) NOT NULL CHECK (tipo_pago IN ('tarjeta de credito', 'debito', 'transferencia', 'efectivo', 'billeteras digitales'),
   plataformas_integradas VARCHAR(100) NOT NULL,
   metodo_pago VARCHAR(100) NOT NULL,
   factura VARCHAR(100) NOT NULL,
@@ -123,3 +128,8 @@ CREATE TABLE preferencias (
   solicitudes_especiales TEXT not null,
   FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
 );
+
+
+ALTER TABLE reserva
+ADD COLUMN estado_reserva VARCHAR(50) DEFAULT 'Pendiente'
+CHECK (estado_reserva IN ('Pendiente', 'Confirmada', 'Cancelada'));
