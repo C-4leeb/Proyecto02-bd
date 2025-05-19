@@ -1,0 +1,480 @@
+create schema sch_reservas_hotel;
+set search_path to sch_reservas_hotel;
+
+-- Tabla de costos
+CREATE TABLE costos (
+  id_costos INT PRIMARY KEY, 
+  temporada VARCHAR(100),
+  promociones_especiales VARCHAR(100)
+);
+
+
+-- Tabla eventos
+CREATE TABLE eventos (
+  ID_evento SERIAL PRIMARY KEY,
+  habitacion_VIP BOOLEAN NOT NULL,
+  bloqueo_por_eventos BOOLEAN NOT NULL,
+  grupos BOOLEAN NOT NULL
+);
+
+-- Tabla de habitación
+CREATE TABLE habitacion (
+  id_habitacion INT PRIMARY KEY, 
+  numero INT NOT NULL,
+  id_costos INT,
+  FOREIGN KEY (id_costos) REFERENCES costos(id_costos),
+  id_evento INT,  
+  FOREIGN KEY (id_evento) REFERENCES eventos(ID_evento),
+  tipo VARCHAR(100) NOT NULL CHECK (tipo IN ('sencilla', 'doble', 'suite')),
+  disponibilidad VARCHAR(50) NOT NULL CHECK (disponibilidad IN ('libre', 'ocupada', 'en limpieza', 'en mantenimiento')), 
+  descripcion TEXT NOT NULL, 
+  caracteristicas TEXT NOT NULL
+);
+
+--Tabla documentos 
+CREATE TABLE documentos (
+  copia_pasaporte VARCHAR(100) PRIMARY KEY,
+  contratos TEXT not null,
+  facturacion_electronica TEXT not null
+);
+
+
+--Creando tabla cliente 
+CREATE TABLE cliente (
+  documento_identidad VARCHAR(50) PRIMARY KEY,
+  nombre VARCHAR(100),
+  nacionalidad VARCHAR(50),
+  telefono VARCHAR(20),
+  correo VARCHAR(100),
+  ID_pago INT,
+  copia_pasaporte VARCHAR(100),
+  FOREIGN KEY (copia_pasaporte) REFERENCES documentos(copia_pasaporte)
+);
+
+CREATE TABLE programa_fidelizacion (
+  documento_identidad VARCHAR(50) PRIMARY KEY,
+  nivel_puntos INT NOT NULL,
+  nivel_cliente VARCHAR(50) NOT NULL,
+  beneficios TEXT NOT NULL,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
+);
+
+
+-- Tabla de políticas de reserva
+CREATE TABLE politicas_reserva (
+  id_politicas SERIAL PRIMARY KEY,
+  minimo_noches INT NOT NULL,
+  penalizaciones_cancelación VARCHAR(100), 
+  upgrades_automaticos BOOLEAN
+);
+ 
+-- Tabla reserva
+CREATE TABLE reserva (
+  ID_reserva SERIAL PRIMARY KEY,
+  numero_huespedes INT NOT NULL,
+  solicitudes_especial TEXT,
+  tipo_reserva VARCHAR(50) NOT NULL CHECK (tipo_reserva IN ('individual', 'grupo', 'corporativa')),
+  tipo_confirmacion VARCHAR(50) NOT NULL CHECK (tipo_confirmacion IN ('correo', 'app', 'teléfono')),
+  fecha_entrada DATE NOT NULL,
+  fecha_salida DATE NOT NULL,
+  id_politicas INT,
+  FOREIGN KEY (id_politicas) REFERENCES politicas_reserva(id_politicas),
+  id_habitacion INT,
+  FOREIGN KEY (id_habitacion) REFERENCES habitacion(id_habitacion),
+  documento_identidad VARCHAR(50),
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
+);
+
+-- Tabla pago
+CREATE TABLE pago (
+  ID_pago SERIAL PRIMARY KEY,
+  tipo_pago VARCHAR(100) NOT NULL CHECK (tipo_pago IN ('tarjeta de credito', 'debito', 'transferencia', 'efectivo', 'billeteras digitales')),
+  plataformas_integradas VARCHAR(100) NOT NULL,
+  metodo_pago VARCHAR(100) NOT NULL,
+  factura VARCHAR(100) NOT NULL,
+  recibo VARCHAR(100),
+  reembolso INT,
+  cargos_extra VARCHAR(100),
+  ID_reserva INT,
+  FOREIGN KEY (ID_reserva) REFERENCES reserva(ID_reserva)
+);
+--Agregando la relación (1:N) en pago
+ALTER TABLE cliente
+ADD CONSTRAINT fk_pago
+FOREIGN KEY (ID_pago) REFERENCES pago(ID_pago);
+
+-- Tabla servicios
+CREATE TABLE servicios (
+  id_servicio SERIAL PRIMARY KEY,
+  documento_identidad VARCHAR(50) not null,
+  nombre VARCHAR(100) not null,
+  disponibilidad BOOLEAN not null,
+  horario TIME not null,
+  precio DECIMAL(10,2) not null,
+  promociones TEXT not null,
+  servicios_extra TEXT not null,
+  ofertas_personalizadas TEXT not null,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente (documento_identidad)
+);
+
+
+--Relación 1:1 de clientes con preferencias (En el diagrama lo trabajamos diferente pero revisando nos parece más optimo así)
+-- Tabla preferencias
+CREATE TABLE preferencias (
+  documento_identidad VARCHAR(50) PRIMARY KEY,
+  tipo_habitacion_favorita VARCHAR(50) not null,
+  alergias_alimenticias TEXT not null,
+  solicitudes_especiales TEXT not null,
+  FOREIGN KEY (documento_identidad) REFERENCES cliente(documento_identidad)
+);
+
+
+ALTER TABLE reserva
+ADD COLUMN estado_reserva VARCHAR(50) DEFAULT 'Pendiente'
+CHECK (estado_reserva IN ('Pendiente', 'Confirmada', 'Cancelada'));
+
+
+
+
+
+
+
+--creando los procedimientos almacenados y sus resultados
+set search_path to sch_reservas_hotel;
+
+--Procedimiento para verificar disponibilidad de habitaciones automáticamente.
+CREATE OR REPLACE PROCEDURE disponibilidad_habitaciones()
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Marcar habitaciones con eventos activos
+    UPDATE habitacion h
+    SET disponibilidad = 'ocupada'
+    FROM eventos e
+    WHERE h.id_evento = e.ID_evento
+      AND (e.bloqueo_por_eventos = TRUE OR e.grupos = TRUE);
+
+    -- Marcar habitaciones con reserva activa
+    UPDATE habitacion
+    SET disponibilidad = 'ocupada'
+    WHERE id_habitacion IN (
+        SELECT id_habitacion FROM reserva
+    );
+
+    -- Marcar habitaciones VIP sin reservas como 'libre'
+    UPDATE habitacion h
+    SET disponibilidad = 'libre'
+    FROM eventos e
+    WHERE h.id_evento = e.ID_evento
+      AND e.habitacion_VIP = TRUE
+      AND h.id_habitacion NOT IN (SELECT id_habitacion FROM reserva)
+      AND h.disponibilidad NOT IN ('en mantenimiento', 'ocupada');
+
+    -- Marcar otras habitaciones libres (que no están reservadas ni ocupadas)
+    UPDATE habitacion
+    SET disponibilidad = 'libre'
+    WHERE id_habitacion NOT IN (SELECT id_habitacion FROM reserva)
+      AND disponibilidad NOT IN ('en mantenimiento', 'ocupada');
+END;
+$$;
+
+--Procedimiento para crear nueva reservación
+CREATE OR REPLACE PROCEDURE crear_reservacion(
+    p_numero_huespedes INT,
+    p_tipo_habitacion VARCHAR,
+    p_id_politicas INT,
+    p_documento_identidad VARCHAR,
+    p_fecha_entrada DATE,
+    p_fecha_salida DATE,
+    p_tipo_reserva VARCHAR,
+    p_tipo_confirmacion VARCHAR,
+    p_solicitudes_especial TEXT DEFAULT NULL
+)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id_habitacion INT;
+BEGIN
+    -- Buscar una habitacion libre del tipo solicitado
+    SELECT id_habitacion INTO v_id_habitacion
+    FROM habitacion
+    WHERE tipo = p_tipo_habitacion
+      AND disponibilidad = 'libre'
+    LIMIT 1;
+
+    -- Si no hay habitaciones disponibles, lanzar error
+    IF v_id_habitacion IS NULL THEN
+        RAISE EXCEPTION 'No hay habitaciones disponibles de tipo %', p_tipo_habitacion;
+    END IF;
+
+    -- Insertar la nueva reserva
+    INSERT INTO reserva(
+        numero_huespedes, 
+        solicitudes_especial,
+        tipo_reserva,
+        tipo_confirmacion,
+        fecha_entrada,
+        fecha_salida,
+        id_politicas, 
+        id_habitacion, 
+        documento_identidad
+    )
+    VALUES (
+        p_numero_huespedes, 
+        p_solicitudes_especial,
+        p_tipo_reserva,
+        p_tipo_confirmacion,
+        p_fecha_entrada,
+        p_fecha_salida,
+        p_id_politicas, 
+        v_id_habitacion, 
+        p_documento_identidad
+    );
+
+    -- Marcar habitacion como ocupada
+    UPDATE habitacion
+    SET disponibilidad = 'ocupada'
+    WHERE id_habitacion = v_id_habitacion;
+
+    RAISE NOTICE 'Reserva creada exitosamente en habitacion %', v_id_habitacion;
+END;
+$$;
+
+--Procedimiento para cancerlar una reservacion
+CREATE OR REPLACE PROCEDURE cancelar_reservacion(p_id_reserva INT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_id_habitacion INT;
+BEGIN
+    -- Verificar si la reserva existe y obtener la habitacion
+    SELECT id_habitacion INTO v_id_habitacion
+    FROM reserva
+    WHERE ID_reserva = p_id_reserva;
+
+    IF v_id_habitacion IS NULL THEN
+        RAISE EXCEPTION 'No se encontro una reserva con el ID %', p_id_reserva;
+    END IF;
+
+    -- Eliminar pagos asociados 
+    DELETE FROM pago WHERE ID_reserva = p_id_reserva;
+
+    -- Marcar la reserva como cancelada
+    UPDATE reserva
+    SET estado_reserva = 'Cancelada'
+    WHERE ID_reserva = p_id_reserva;
+
+    -- Liberar la habitacion 
+    UPDATE habitacion
+    SET disponibilidad = 'libre'
+    WHERE id_habitacion = v_id_habitacion;
+
+ 
+    RAISE NOTICE 'Reserva % cancelada.', p_id_reserva;
+END;
+$$;
+
+--Procedimieto que cambia el estado de la reservación una vez registrado el pago realizado
+CREATE OR REPLACE PROCEDURE ActualizarEstadoPago(p_id_reserva INT)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_pago_existente INT;
+BEGIN
+    -- Verificar si existe el pago 
+    SELECT COUNT(*) INTO v_pago_existente
+    FROM pago
+    WHERE ID_reserva = p_id_reserva;
+
+    -- Si no hay pago, lanzar excepción
+    IF v_pago_existente = 0 THEN
+        RAISE EXCEPTION 'No hay un pago registrado para la reserva %', p_id_reserva;
+    END IF;
+
+    -- Actualizar estado de la reserva a Confirmada
+    UPDATE reserva
+    SET estado_reserva = 'Confirmada'
+    WHERE ID_reserva = p_id_reserva;
+
+    RAISE NOTICE 'Reserva % confirmada.', p_id_reserva;
+END;
+$$;
+
+
+--Creando los triggers
+
+--Tabla para almacenar los cambios en las reservas
+CREATE TABLE auditoria_disponibilidad (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_habitacion INT,
+    disponibilidad_anterior VARCHAR(50),
+    disponibilidad_nueva VARCHAR(50),
+    fecha TIMESTAMP DEFAULT NOW()
+);
+
+
+--Función del trigger para guardar los cambios
+CREATE OR REPLACE FUNCTION registrar_cambio_disponibilidad()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.disponibilidad IS DISTINCT FROM OLD.disponibilidad THEN
+        INSERT INTO auditoria_disponibilidad (
+            id_habitacion,
+            disponibilidad_anterior,
+            disponibilidad_nueva,
+            fecha
+        )
+        VALUES (
+            OLD.id_habitacion,
+            OLD.disponibilidad,
+            NEW.disponibilidad,
+            NOW()
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+--Trigger para llamar a la función
+CREATE TRIGGER trg_disponibilidad
+BEFORE UPDATE ON habitacion
+FOR EACH ROW
+EXECUTE FUNCTION registrar_cambio_disponibilidad();
+
+
+--Tabla para almacenar la auditoría de reservaciones
+CREATE TABLE auditoria_reservas (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_entrada DATE,
+    fecha_salida DATE,
+    tipo_reserva VARCHAR,
+    tipo_confirmacion VARCHAR,
+    numero_huespedes INT,
+    fecha_creacion TIMESTAMP DEFAULT NOW()
+);
+
+
+--función del trigger
+CREATE OR REPLACE FUNCTION registrar_auditoria_reserva()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO auditoria_reservas (
+        id_reserva,
+        id_habitacion,
+        documento_identidad,
+        fecha_entrada,
+        fecha_salida,
+        tipo_reserva,
+        tipo_confirmacion,
+        numero_huespedes,
+        fecha_creacion
+    )
+    VALUES (
+        NEW.id_reserva,
+        NEW.id_habitacion,
+        NEW.documento_identidad,
+        NEW.fecha_entrada,
+        NEW.fecha_salida,
+        NEW.tipo_reserva,
+        NEW.tipo_confirmacion,
+        NEW.numero_huespedes,
+        NOW()
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--Crear trigger 
+CREATE TRIGGER trg_auditoria_reserva
+AFTER INSERT ON reserva
+FOR EACH ROW
+EXECUTE FUNCTION registrar_auditoria_reserva();
+
+--Crear tabla del trigger
+CREATE TABLE auditoria_cancelaciones (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_cancelacion TIMESTAMP DEFAULT NOW(),
+    motivo TEXT DEFAULT 'Cancelación del sistema'
+);
+
+
+--Función del trigger 
+CREATE OR REPLACE FUNCTION registrar_cancelacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.estado_reserva = 'Cancelada' AND OLD.estado_reserva IS DISTINCT FROM 'Cancelada' THEN
+        INSERT INTO auditoria_cancelaciones (
+            id_reserva,
+            id_habitacion,
+            documento_identidad,
+            fecha_cancelacion,
+            motivo
+        )
+        VALUES (
+            NEW.id_reserva,
+            NEW.id_habitacion,
+            NEW.documento_identidad,
+            NOW(),
+            'Cancelación registrada automáticamente'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+--Crear función del trogger CREATE TRIGGER trg_auditoria_cancelacion
+CREATE TRIGGER trg_auditoria_disponibilidad
+BEFORE UPDATE ON habitacion
+FOR EACH ROW
+EXECUTE FUNCTION registrar_cambio_disponibilidad();
+
+
+
+--Crear tabla para auditoría
+CREATE TABLE auditoria_confirmaciones (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_confirmacion TIMESTAMP DEFAULT NOW()
+);
+
+--Crear función del trigger
+CREATE OR REPLACE FUNCTION registrar_confirmacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.estado_reserva = 'Confirmada' AND OLD.estado_reserva IS DISTINCT FROM 'Confirmada' THEN
+        INSERT INTO auditoria_confirmaciones (
+            id_reserva,
+            id_habitacion,
+            documento_identidad,
+            fecha_confirmacion
+        )
+        VALUES (
+            NEW.id_reserva,
+            NEW.id_habitacion,
+            NEW.documento_identidad,
+            NOW()
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--Crear el trigger
+CREATE TRIGGER trg_auditoria_confirmacion
+AFTER UPDATE ON reserva
+FOR EACH ROW
+EXECUTE FUNCTION registrar_confirmacion();
