@@ -26,8 +26,8 @@ CREATE TABLE habitacion (
   FOREIGN KEY (id_costos) REFERENCES costos(id_costos),
   id_evento INT,  
   FOREIGN KEY (id_evento) REFERENCES eventos(ID_evento),
-  tipo VARCHAR(100) NOT NULL,
-  disponibilidad BOOLEAN NOT NULL, 
+  tipo VARCHAR(100) NOT NULL CHECK (tipo IN ('sencilla', 'doble', 'suite')),
+  disponibilidad BOOLEAN NOT NULL CHECK (disponibilidad IN ('libre', 'ocupada', 'en limpieza', 'en mantenimiento')), 
   descripcion TEXT NOT NULL, 
   caracteristicas TEXT NOT NULL
 );
