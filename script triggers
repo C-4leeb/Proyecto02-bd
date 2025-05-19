@@ -1,0 +1,177 @@
+--Creando los triggers
+
+--Tabla para almacenar los cambios en las reservas
+CREATE TABLE auditoria_disponibilidad (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_habitacion INT,
+    disponibilidad_anterior VARCHAR(50),
+    disponibilidad_nueva VARCHAR(50),
+    fecha TIMESTAMP DEFAULT NOW()
+);
+
+
+--Función del trigger para guardar los cambios
+CREATE OR REPLACE FUNCTION registrar_cambio_disponibilidad()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.disponibilidad IS DISTINCT FROM OLD.disponibilidad THEN
+        INSERT INTO auditoria_disponibilidad (
+            id_habitacion,
+            disponibilidad_anterior,
+            disponibilidad_nueva,
+            fecha
+        )
+        VALUES (
+            OLD.id_habitacion,
+            OLD.disponibilidad,
+            NEW.disponibilidad,
+            NOW()
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+
+--Trigger para llamar a la función
+CREATE TRIGGER trg_disponibilidad
+BEFORE UPDATE ON habitacion
+FOR EACH ROW
+EXECUTE FUNCTION registrar_cambio_disponibilidad();
+
+
+--Tabla para almacenar la auditoría de reservaciones
+CREATE TABLE auditoria_reservas (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_entrada DATE,
+    fecha_salida DATE,
+    tipo_reserva VARCHAR,
+    tipo_confirmacion VARCHAR,
+    numero_huespedes INT,
+    fecha_creacion TIMESTAMP DEFAULT NOW()
+);
+
+
+--función del trigger
+CREATE OR REPLACE FUNCTION registrar_auditoria_reserva()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO auditoria_reservas (
+        id_reserva,
+        id_habitacion,
+        documento_identidad,
+        fecha_entrada,
+        fecha_salida,
+        tipo_reserva,
+        tipo_confirmacion,
+        numero_huespedes,
+        fecha_creacion
+    )
+    VALUES (
+        NEW.id_reserva,
+        NEW.id_habitacion,
+        NEW.documento_identidad,
+        NEW.fecha_entrada,
+        NEW.fecha_salida,
+        NEW.tipo_reserva,
+        NEW.tipo_confirmacion,
+        NEW.numero_huespedes,
+        NOW()
+    );
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--Crear trigger 
+CREATE TRIGGER trg_auditoria_reserva
+AFTER INSERT ON reserva
+FOR EACH ROW
+EXECUTE FUNCTION registrar_auditoria_reserva();
+
+--Crear tabla del trigger
+CREATE TABLE auditoria_cancelaciones (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_cancelacion TIMESTAMP DEFAULT NOW(),
+    motivo TEXT DEFAULT 'Cancelación del sistema'
+);
+
+
+--Función del trigger 
+CREATE OR REPLACE FUNCTION registrar_cancelacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.estado_reserva = 'Cancelada' AND OLD.estado_reserva IS DISTINCT FROM 'Cancelada' THEN
+        INSERT INTO auditoria_cancelaciones (
+            id_reserva,
+            id_habitacion,
+            documento_identidad,
+            fecha_cancelacion,
+            motivo
+        )
+        VALUES (
+            NEW.id_reserva,
+            NEW.id_habitacion,
+            NEW.documento_identidad,
+            NOW(),
+            'Cancelación registrada automáticamente'
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+
+--Crear función del trogger CREATE TRIGGER trg_auditoria_cancelacion
+CREATE TRIGGER trg_auditoria_disponibilidad
+BEFORE UPDATE ON habitacion
+FOR EACH ROW
+EXECUTE FUNCTION registrar_cambio_disponibilidad();
+
+
+
+--Crear tabla para auditoría
+CREATE TABLE auditoria_confirmaciones (
+    id_auditoria SERIAL PRIMARY KEY,
+    id_reserva INT,
+    id_habitacion INT,
+    documento_identidad VARCHAR,
+    fecha_confirmacion TIMESTAMP DEFAULT NOW()
+);
+
+--Crear función del trigger
+CREATE OR REPLACE FUNCTION registrar_confirmacion()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.estado_reserva = 'Confirmada' AND OLD.estado_reserva IS DISTINCT FROM 'Confirmada' THEN
+        INSERT INTO auditoria_confirmaciones (
+            id_reserva,
+            id_habitacion,
+            documento_identidad,
+            fecha_confirmacion
+        )
+        VALUES (
+            NEW.id_reserva,
+            NEW.id_habitacion,
+            NEW.documento_identidad,
+            NOW()
+        );
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--Crear el trigger
+CREATE TRIGGER trg_auditoria_confirmacion
+AFTER UPDATE ON reserva
+FOR EACH ROW
+EXECUTE FUNCTION registrar_confirmacion();
