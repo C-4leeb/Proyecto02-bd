@@ -48,7 +48,8 @@ CREATE TABLE cliente (
   correo VARCHAR(100),
   ID_pago INT,
   copia_pasaporte VARCHAR(100),
-  FOREIGN KEY (copia_pasaporte) REFERENCES documentos(copia_pasaporte)
+  FOREIGN KEY (copia_pasaporte) REFERENCES documentos(copia_pasaporte),
+  FOREIGN KEY (documento_identidad) REFERENCES preferencias(documento_identidad)
 );
 
 CREATE TABLE programa_fidelizacion (
