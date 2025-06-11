@@ -1,0 +1,11 @@
+-- Índice para búsquedas por documento del cliente
+CREATE INDEX idx_reserva_documento_identidad ON reserva(documento_identidad);
+
+-- Índice para búsquedas por fechas (para disponibilidad, filtros, reportes)
+CREATE INDEX idx_reserva_fechas ON reserva(fecha_entrada, fecha_salida);
+
+-- Índice por estado de la reserva (pendiente, confirmada, cancelada, etc.)
+CREATE INDEX idx_reserva_estado ON reserva(estado_reserva);
+
+-- Índice por habitación (útil para evitar overbooking y búsquedas por habitación)
+CREATE INDEX idx_reserva_id_habitacion ON reserva(id_habitacion);
